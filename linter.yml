@@ -1,0 +1,68 @@
+variables:
+  SRC_DIR: "src"
+  TEST_DIR: "tests"
+  COV_FAIL: 70
+
+stages:
+  - linting
+
+linting:
+  image: python:3.9-slim
+  stage: linting
+  before_script:
+    - pip install ruff
+    #- export PYTHONPATH="${PYTHONPATH}:/src/"
+  script:
+    - ruff check $SRC_DIR
+
+linting-terraform:
+  image: hashicorp/terraform
+  stage: linting
+  script:
+    - terraform fmt -recursive --check .
+
+package-tests:
+  image: python:3.9-slim
+  stage: linting
+  before_script:
+    - pip install -r requirements.txt
+    - pip install pytest==7.4.0
+    - pip install pytest_cov==4.1.0
+    - export PYTHONPATH="${PYTHONPATH}:/src/"
+  script:
+    - pytest --junitxml=report.xml --cov=$SRC_DIR --cov-fail-under=$COV_FAIL --cov-report term --cov-report xml:coverage.xml $TEST_DIR
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    reports:
+      junit: report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+checkov:
+  stage: linting
+  allow_failure: true  # True for AutoDevOps compatibility
+  image:
+    name: bridgecrew/checkov:latest
+    entrypoint:
+      - '/usr/bin/env'
+      - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+  rules:
+    - if: $SAST_DISABLED
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - '**/*.yml'
+        - '**/*.yaml'
+        - '**/*.json'
+        - '**/*.template'
+        - '**/*.tf'
+        - '**/serverless.yml'
+        - '**/serverless.yaml'
+  script:
+    - checkov -d . -o junitxml --download-external-modules true | tee checkov.test.xml
+  artifacts:
+    reports:
+      junit: "checkov.test.xml"
+    paths:
+      - "checkov.test.xml"
