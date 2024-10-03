@@ -1,0 +1,10 @@
+# included templates
+include:
+  # Python template
+  - project: "badgerworks/cicd-template/linter-template"
+    ref: 'main'
+    file: "linter.yml"
+
+
+stages:
+  - linting
